@@ -3,116 +3,123 @@ import random
 import time
 import pandas as pd
 import joblib
+import pydeck as pdk
 
-# Load model
-model = joblib.load("model.pkl")
+# ------------------ SESSION ------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-# Page config
-st.set_page_config(layout="wide")
+# ------------------ LOGIN PAGE ------------------
+def login():
+    st.title("🔐 Login / Signup")
 
-# ------------------ CUSTOM CSS ------------------
-st.markdown("""
-<style>
-body {
-    background-color: #0e1117;
-    color: white;
-}
-.hero {
-    background-image: url("https://images.unsplash.com/photo-1502877338535-766e1452684a");
-    background-size: cover;
-    padding: 120px 20px;
-    border-radius: 15px;
-    text-align: center;
-    color: white;
-}
-.big-title {
-    font-size: 50px;
-    font-weight: bold;
-}
-.sub-text {
-    font-size: 20px;
-    margin-bottom: 20px;
-}
-.stButton>button {
-    height: 3em;
-    width: 200px;
-    border-radius: 10px;
-    font-size: 16px;
-}
-</style>
-""", unsafe_allow_html=True)
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
 
-# ------------------ HERO SECTION ------------------
-st.markdown("""
-<div class="hero">
-    <div class="big-title">🚦 Smart Traffic Analytics</div>
-    <div class="sub-text">Predict traffic incidents in real-time using AI</div>
-</div>
-""", unsafe_allow_html=True)
+    if st.button("Login"):
+        if username and password:
+            st.session_state.logged_in = True
+            st.success("Login Successful!")
+        else:
+            st.error("Enter credentials")
 
-st.write("")
+# ------------------ MAIN APP ------------------
+def app():
 
-# ------------------ BUTTONS ------------------
-col1, col2, col3 = st.columns(3)
+    model = joblib.load("model.pkl")
 
-start = col1.button("▶ Start Simulation")
-dashboard = col2.button("📊 Open Dashboard")
-about = col3.button("ℹ About Project")
+    st.title("🚦 Smart Traffic AI Dashboard")
 
-# ------------------ ABOUT SECTION ------------------
-if about:
-    st.subheader("📘 About This Project")
-    st.write("""
-    This system simulates real-time traffic and predicts incidents using Machine Learning.
-    
-    Features:
-    - Live traffic simulation
-    - AI-based prediction
-    - Real-time dashboard
-    """)
+    # Sidebar
+    st.sidebar.title("Navigation")
+    page = st.sidebar.radio("Go to", ["Dashboard", "Map", "Analytics"])
 
-# ------------------ DASHBOARD ------------------
-history = []
+    history = []
 
-if start or dashboard:
+    # ------------------ DASHBOARD ------------------
+    if page == "Dashboard":
 
-    st.subheader("📊 Live Traffic Dashboard")
+        st.subheader("📊 Live Simulation")
 
-    col1, col2, col3 = st.columns(3)
+        col1, col2, col3 = st.columns(3)
 
-    data_placeholder = st.empty()
-    chart_placeholder = st.empty()
+        data_placeholder = st.empty()
+        chart_placeholder = st.empty()
 
-    for i in range(30):
+        for i in range(20):
+            vehicle_count = random.randint(10, 120)
+            avg_speed = random.randint(20, 100)
 
-        vehicle_count = random.randint(10, 120)
-        avg_speed = random.randint(20, 100)
+            prediction = model.predict([[vehicle_count, avg_speed]])[0]
 
-        prediction = model.predict([[vehicle_count, avg_speed]])[0]
+            history.append({
+                "Vehicle Count": vehicle_count,
+                "Speed": avg_speed,
+                "Incident": prediction
+            })
 
-        history.append({
-            "Vehicle Count": vehicle_count,
-            "Average Speed": avg_speed,
-            "Incident": prediction
+            df = pd.DataFrame(history)
+
+            col1.metric("Vehicles", vehicle_count)
+            col2.metric("Speed", avg_speed)
+            col3.metric("Status", "High Risk" if prediction else "Normal")
+
+            if prediction:
+                st.error("🚨 Incident Risk!")
+            else:
+                st.success("Normal Traffic")
+
+            data_placeholder.dataframe(df.tail(5))
+            chart_placeholder.line_chart(df[["Vehicle Count", "Speed"]])
+
+            time.sleep(1)
+
+    # ------------------ MAP ------------------
+    elif page == "Map":
+
+        st.subheader("🗺️ Traffic Map")
+
+        map_data = pd.DataFrame({
+            "lat": [17.3850 + random.random()/100 for _ in range(50)],
+            "lon": [78.4867 + random.random()/100 for _ in range(50)]
         })
 
-        df = pd.DataFrame(history)
+        st.pydeck_chart(pdk.Deck(
+            initial_view_state=pdk.ViewState(
+                latitude=17.3850,
+                longitude=78.4867,
+                zoom=11,
+                pitch=50,
+            ),
+            layers=[
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=map_data,
+                    get_position='[lon, lat]',
+                    get_color='[200, 30, 0, 160]',
+                    get_radius=100,
+                ),
+            ],
+        ))
 
-        # Metrics
-        col1.metric("🚗 Vehicles", vehicle_count)
-        col2.metric("⚡ Speed", avg_speed)
-        col3.metric("⚠ Status", "HIGH RISK" if prediction else "NORMAL")
+    # ------------------ ANALYTICS ------------------
+    elif page == "Analytics":
 
-        # Alerts
-        if prediction:
-            st.error("🚨 Accident Risk Detected!")
-        else:
-            st.success("✅ Traffic Normal")
+        st.subheader("📈 Advanced Analytics")
 
-        # Data
-        data_placeholder.dataframe(df.tail(5))
+        df = pd.DataFrame({
+            "Vehicles": [random.randint(20, 100) for _ in range(50)],
+            "Speed": [random.randint(30, 100) for _ in range(50)]
+        })
 
-        # Chart
-        chart_placeholder.line_chart(df[["Vehicle Count", "Average Speed"]])
+        st.line_chart(df)
+        st.bar_chart(df)
 
-        time.sleep(1)
+        st.write("📊 Statistical Summary")
+        st.write(df.describe())
+
+# ------------------ ROUTER ------------------
+if not st.session_state.logged_in:
+    login()
+else:
+    app()
