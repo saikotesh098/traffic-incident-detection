@@ -3,21 +3,34 @@ import random
 import time
 import pandas as pd
 import joblib
+import sqlite3
+import requests
 import pydeck as pdk
 
 # ------------------ PAGE CONFIG ------------------
 st.set_page_config(page_title="TrafficAI", layout="wide")
 
+# ------------------ DATABASE ------------------
+conn = sqlite3.connect("traffic.db", check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS traffic (
+    vehicle_count INT,
+    speed INT,
+    prediction INT
+)
+""")
+
 # ------------------ SESSION ------------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-# ------------------ LOGIN PAGE ------------------
+# ------------------ LOGIN ------------------
 def login():
-    st.markdown("<h1 style='text-align:center;'>🚦 TrafficAI Login</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center;'>🔐 TrafficAI Login</h1>", unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1,2,1])
-
     with col2:
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
@@ -27,31 +40,24 @@ def login():
                 st.session_state.logged_in = True
                 st.success("Login Successful ✅")
             else:
-                st.error("Enter valid details")
+                st.error("Enter valid credentials")
 
 # ------------------ MAIN APP ------------------
 def app():
 
     model = joblib.load("model.pkl")
 
-    # Sidebar Navigation
     st.sidebar.title("🚦 TrafficAI")
-    page = st.sidebar.radio("Navigation", ["🏠 Home", "📊 Dashboard", "🗺️ Map", "📈 Analytics"])
+    page = st.sidebar.radio("Navigation", ["🏠 Home", "📊 Dashboard", "🗺️ Map", "📈 Analytics", "🌐 API Data"])
 
     # ------------------ HOME ------------------
     if page == "🏠 Home":
         st.markdown("""
         <div style='text-align:center; padding:50px;'>
             <h1>🚦 Smart Traffic Analytics System</h1>
-            <p>AI-powered system to predict traffic incidents in real-time</p>
+            <p>AI-powered real-time traffic prediction system</p>
         </div>
         """, unsafe_allow_html=True)
-
-        st.write("### 🚀 Features")
-        col1, col2, col3 = st.columns(3)
-        col1.info("🚗 Real-time Simulation")
-        col2.info("🤖 AI Prediction")
-        col3.info("📊 Live Dashboard")
 
     # ------------------ DASHBOARD ------------------
     elif page == "📊 Dashboard":
@@ -64,11 +70,17 @@ def app():
 
         history = []
 
-        for i in range(30):
+        for i in range(20):
+
             vehicle_count = random.randint(10, 120)
             speed = random.randint(20, 100)
 
             prediction = model.predict([[vehicle_count, speed]])[0]
+
+            # Save to DB
+            cursor.execute("INSERT INTO traffic VALUES (?, ?, ?)",
+                           (vehicle_count, speed, prediction))
+            conn.commit()
 
             history.append({
                 "Vehicle Count": vehicle_count,
@@ -92,24 +104,24 @@ def app():
 
             time.sleep(1)
 
+        # Show stored DB data
+        df_db = pd.read_sql("SELECT * FROM traffic", conn)
+        st.subheader("📂 Stored Data")
+        st.dataframe(df_db.tail(10))
+
     # ------------------ MAP ------------------
     elif page == "🗺️ Map":
 
-        st.subheader("🌍 Live Traffic Map")
+        st.subheader("🌍 Live Map")
 
-        # Google Map Embed
+        # Google Map
         map_html = """
-        <iframe
-        width="100%"
-        height="400"
-        src="https://www.google.com/maps?q=Hyderabad&output=embed">
-        </iframe>
+        <iframe width="100%" height="400"
+        src="https://www.google.com/maps?q=Hyderabad&output=embed"></iframe>
         """
         st.markdown(map_html, unsafe_allow_html=True)
 
-        # Pydeck Markers
-        st.subheader("📍 Traffic Points")
-
+        # Pydeck markers
         map_data = pd.DataFrame({
             "lat": [17.3850 + random.random()/100 for _ in range(50)],
             "lon": [78.4867 + random.random()/100 for _ in range(50)]
@@ -136,20 +148,28 @@ def app():
     # ------------------ ANALYTICS ------------------
     elif page == "📈 Analytics":
 
-        st.subheader("📈 Advanced Analytics")
+        st.subheader("📈 Analytics")
 
-        df = pd.DataFrame({
-            "Vehicles": [random.randint(20, 100) for _ in range(50)],
-            "Speed": [random.randint(30, 100) for _ in range(50)]
-        })
+        df_db = pd.read_sql("SELECT * FROM traffic", conn)
 
-        st.line_chart(df)
-        st.bar_chart(df)
+        if not df_db.empty:
+            st.line_chart(df_db[["vehicle_count", "speed"]])
+            st.bar_chart(df_db[["vehicle_count", "speed"]])
+            st.write("📊 Summary")
+            st.write(df_db.describe())
+        else:
+            st.warning("No data available yet")
 
-        st.write("### 📊 Statistical Summary")
-        st.write(df.describe())
+    # ------------------ API DATA ------------------
+    elif page == "🌐 API Data":
 
-        st.success("📱 Mobile Friendly Dashboard Enabled")
+        st.subheader("🌐 Backend API Data")
+
+        try:
+            res = requests.get("http://127.0.0.1:8000/data")
+            st.write(res.json())
+        except:
+            st.error("⚠ API not running. Start FastAPI server.")
 
 # ------------------ ROUTER ------------------
 if not st.session_state.logged_in:
