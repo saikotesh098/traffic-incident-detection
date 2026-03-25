@@ -1,10 +1,8 @@
 import streamlit as st
 import random
-import time
 import pandas as pd
 import joblib
 import sqlite3
-import requests
 import pydeck as pdk
 
 # ------------------ PAGE CONFIG ------------------
@@ -26,7 +24,7 @@ CREATE TABLE IF NOT EXISTS traffic (
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-# ------------------ LOGIN ------------------
+# ------------------ LOGIN PAGE ------------------
 def login():
     st.markdown("<h1 style='text-align:center;'>🔐 TrafficAI Login</h1>", unsafe_allow_html=True)
 
@@ -48,14 +46,14 @@ def app():
     model = joblib.load("model.pkl")
 
     st.sidebar.title("🚦 TrafficAI")
-    page = st.sidebar.radio("Navigation", ["🏠 Home", "📊 Dashboard", "🗺️ Map", "📈 Analytics", "🌐 API Data"])
+    page = st.sidebar.radio("Navigation", ["🏠 Home", "📊 Dashboard", "🗺️ Map", "📈 Analytics"])
 
     # ------------------ HOME ------------------
     if page == "🏠 Home":
         st.markdown("""
         <div style='text-align:center; padding:50px;'>
             <h1>🚦 Smart Traffic Analytics System</h1>
-            <p>AI-powered real-time traffic prediction system</p>
+            <p>AI-powered traffic incident prediction</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -64,13 +62,7 @@ def app():
 
         st.subheader("📊 Live Traffic Dashboard")
 
-        col1, col2, col3 = st.columns(3)
-        data_placeholder = st.empty()
-        chart_placeholder = st.empty()
-
-        history = []
-
-        for i in range(20):
+        if st.button("▶ Generate Traffic Data"):
 
             vehicle_count = random.randint(10, 120)
             speed = random.randint(20, 100)
@@ -82,14 +74,7 @@ def app():
                            (vehicle_count, speed, prediction))
             conn.commit()
 
-            history.append({
-                "Vehicle Count": vehicle_count,
-                "Speed": speed,
-                "Incident": prediction
-            })
-
-            df = pd.DataFrame(history)
-
+            col1, col2, col3 = st.columns(3)
             col1.metric("🚗 Vehicles", vehicle_count)
             col2.metric("⚡ Speed", speed)
             col3.metric("⚠ Status", "HIGH RISK" if prediction else "NORMAL")
@@ -99,29 +84,27 @@ def app():
             else:
                 st.success("✅ Traffic Normal")
 
-            data_placeholder.dataframe(df.tail(5))
-            chart_placeholder.line_chart(df[["Vehicle Count", "Speed"]])
-
-            time.sleep(1)
-
-        # Show stored DB data
+        # Show DB data
         df_db = pd.read_sql("SELECT * FROM traffic", conn)
+
         st.subheader("📂 Stored Data")
         st.dataframe(df_db.tail(10))
+
+        if not df_db.empty:
+            st.subheader("📈 Trends")
+            st.line_chart(df_db[["vehicle_count", "speed"]])
 
     # ------------------ MAP ------------------
     elif page == "🗺️ Map":
 
-        st.subheader("🌍 Live Map")
+        st.subheader("🌍 Traffic Map")
 
-        # Google Map
         map_html = """
         <iframe width="100%" height="400"
         src="https://www.google.com/maps?q=Hyderabad&output=embed"></iframe>
         """
         st.markdown(map_html, unsafe_allow_html=True)
 
-        # Pydeck markers
         map_data = pd.DataFrame({
             "lat": [17.3850 + random.random()/100 for _ in range(50)],
             "lon": [78.4867 + random.random()/100 for _ in range(50)]
@@ -148,28 +131,17 @@ def app():
     # ------------------ ANALYTICS ------------------
     elif page == "📈 Analytics":
 
-        st.subheader("📈 Analytics")
+        st.subheader("📈 Traffic Analytics")
 
         df_db = pd.read_sql("SELECT * FROM traffic", conn)
 
         if not df_db.empty:
             st.line_chart(df_db[["vehicle_count", "speed"]])
             st.bar_chart(df_db[["vehicle_count", "speed"]])
-            st.write("📊 Summary")
+            st.write("📊 Statistical Summary")
             st.write(df_db.describe())
         else:
             st.warning("No data available yet")
-
-    # ------------------ API DATA ------------------
-    elif page == "🌐 API Data":
-
-        st.subheader("🌐 Backend API Data")
-
-        try:
-            res = requests.get("http://127.0.0.1:8000/data")
-            st.write(res.json())
-        except:
-            st.error("⚠ API not running. Start FastAPI server.")
 
 # ------------------ ROUTER ------------------
 if not st.session_state.logged_in:
